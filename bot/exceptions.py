@@ -1,0 +1,2 @@
+class TooLongMessageText(Exception):
+    pass

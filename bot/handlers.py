@@ -1,10 +1,11 @@
 from aiogram import types
+from aiogram.utils.exceptions import BadRequest
 from tortoise.exceptions import DoesNotExist
 
 from . import dp, bot
 from .filters import BotAddedToGroup
 from .models import Group, PinnedMessage
-from .services import is_msg_supported, update_or_create_global_pinned_message
+from .services import is_msg_supported, update_or_create_global_pinned_message, unpin_pattern, message_thumbnail
 
 
 @dp.message_handler(commands=['help', 'start'])
@@ -18,27 +19,30 @@ async def start(msg: types.Message) -> None:
         await msg.reply("To pin messages reply to it with /pin command.")
 
 
-@dp.message_handler(lambda msg: msg.text is not None and msg.text.startswith('/unpin'))
+@dp.message_handler(regexp=unpin_pattern)
 async def unpin_command(msg: types.Message) -> None:
     """
     This handler will be called when user unpins message with '/unpin<msg_id>'
     """
-    command = msg.text
+    res = unpin_pattern.match(msg.text)
+    pinned_msg_id = int(res.group(1))
     try:
-        pinned_msg_id = int(command[6:])
-    except ValueError:
-        return
-    try:
-        pinned_msg = await PinnedMessage.get(telegram_id=pinned_msg_id)
+        pinned_msg = await PinnedMessage.get(id=pinned_msg_id)
     except DoesNotExist:
         await msg.answer('Message does not exist.')
         return
+    await pinned_msg.fetch_related('group')
     if pinned_msg.group.telegram_id != msg.chat.id:
         await msg.answer('Message does not exist.')
         return
     await pinned_msg.delete()
     current_group = await Group.get(telegram_id=msg.chat.id)
     await update_or_create_global_pinned_message(bot, current_group)
+    try:
+        await bot.send_message(msg.chat.id, "Successfully unpinned message!", reply_to_message_id=pinned_msg.telegram_id)
+    except BadRequest as e:
+        if str(e) == 'Reply message not found':
+            await bot.send_message(msg.chat.id, f"Successfully unpinned message! {message_thumbnail(pinned_msg.text)}")
 
 
 @dp.message_handler(commands=['pin'])
@@ -52,6 +56,13 @@ async def pin_command(msg: types.Message) -> None:
     if not await is_msg_supported(msg):
         await msg.answer("Sorry, this type of message is not supported. For now I support only text messages.")
     current_group = await Group.get(telegram_id=msg.chat.id)
+    already_pinned_message = await PinnedMessage.get_or_none(
+        telegram_id=msg.reply_to_message.message_id,
+        group=current_group
+    )
+    if already_pinned_message is not None:
+        await msg.answer("This message is already pinned!")
+        return
     new_pinned_msg = PinnedMessage(
         group=current_group,
         text=msg.reply_to_message.text,
@@ -61,9 +72,10 @@ async def pin_command(msg: types.Message) -> None:
     )
     await new_pinned_msg.save()
     await update_or_create_global_pinned_message(bot, current_group, new_pinned_msg)
+    await msg.reply_to_message.reply("Successfully pinned message!")
 
 
-@dp.message_handler(content_types=[types.ContentType.PINNED_MESSAGE])
+@dp.message_handler(lambda msg: msg.from_user.id != bot.id, content_types=[types.ContentType.PINNED_MESSAGE])
 async def pin(msg: types.Message) -> None:
     """
     This handler will be called when user pins a message without command.
@@ -81,8 +93,9 @@ async def added_to_group(msg: types.Message) -> None:
     """
     This handler will be called when bot was added to group.
     """
-    await msg.answer("Hi, I'm @multipinbot. I can pin multiple messages in group."
+    await msg.answer("Hi, I'm @multipinbot. I can pin multiple messages in group.\n\n"
+                     "To use my functionality you need to grant me rights to pin messages in group."
                      " To pin a message reply to it with /pin command.")
-    current_group, is_created = await Group.get_or_create({'telegram_id': msg.chat.id}, telegram_id=msg.chat.id)
+    current_group, is_created = await Group.get_or_create(telegram_id=msg.chat.id)
     if is_created:
         await current_group.save()

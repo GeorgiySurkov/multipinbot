@@ -1,6 +1,7 @@
 from typing import List, Optional, Tuple
 from aiogram import Bot, types
 from aiogram.utils.exceptions import NotEnoughRightsToPinMessage
+import re
 
 from .models import PinnedMessage, Group
 from .exceptions import TooLongMessageText
@@ -25,6 +26,11 @@ async def make_global_pinned_message(bot: Bot, pinned_messages: List[PinnedMessa
     return msg
 
 
+async def make_global_pinned_message_for_group(bot: Bot, group: Group) -> str:
+    pinned_messages = await PinnedMessage.filter(group=group).order_by('-sent').all()
+    return await make_global_pinned_message(bot, pinned_messages)
+
+
 async def get_new_global_pinned_message_text(bot: Bot,
                                              current_group: Group,
                                              new_pinned_msg: Optional[PinnedMessage] = None
@@ -37,11 +43,9 @@ async def get_new_global_pinned_message_text(bot: Bot,
     :return: tuple of two values: is_updated and global_pinned_message_text
     """
     if new_pinned_msg is not None:
-        pinned_messages = await PinnedMessage.filter(group=current_group).all()
         try:
-            global_pinned_message_text = await make_global_pinned_message(bot, pinned_messages)
-            is_updated = True
-        except TooLongMessageText as e:
+            global_pinned_message_text = await make_global_pinned_message_for_group(bot, current_group)
+        except TooLongMessageText:
             await new_pinned_msg.delete()
             await bot.send_message(
                 current_group.telegram_id,
@@ -49,19 +53,14 @@ async def get_new_global_pinned_message_text(bot: Bot,
             )
             if current_group.global_pinned_message_text is not None:
                 global_pinned_message_text = current_group.global_pinned_message_text
-                is_updated = True
             else:
-                pinned_messages = await PinnedMessage.filter(group=current_group).all()
-                global_pinned_message_text = await make_global_pinned_message(bot, pinned_messages)
-                is_updated = False
+                global_pinned_message_text = await make_global_pinned_message_for_group(bot, current_group)
     else:
         if current_group.global_pinned_message_text is not None:
             global_pinned_message_text = current_group.global_pinned_message_text
-            is_updated = True
         else:
-            pinned_messages = await PinnedMessage.filter(group=current_group).all()
-            global_pinned_message_text = await make_global_pinned_message(bot, pinned_messages)
-            is_updated = False
+            global_pinned_message_text = await make_global_pinned_message_for_group(bot, current_group)
+    is_updated = global_pinned_message_text != current_group.global_pinned_message_text
     return is_updated, global_pinned_message_text
 
 
@@ -130,3 +129,12 @@ async def update_global_pinned_message(bot: Bot,
 
 async def is_msg_supported(msg: types.Message) -> bool:
     return msg.text is not None
+
+
+def message_thumbnail(msg_text: str) -> str:
+    if len(msg_text) > 10:
+        return msg_text[:8] + '...'
+    return msg_text
+
+
+unpin_pattern = re.compile(r'^/unpin(\d+)(@multipinbot)?$')

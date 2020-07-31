@@ -4,7 +4,8 @@ from tortoise import fields
 
 class PinnedMessage(Model):
     class Meta:
-        table = 'pinned_messages'
+        table = 'pinned_message'
+        unique_together = (('telegram_id', 'group_id'),)
     id = fields.IntField(pk=True)
     group = fields.ForeignKeyField('models.Group', related_name='pinned_messages')
     text = fields.CharField(max_length=4096)
@@ -17,7 +18,7 @@ class Group(Model):
     class Meta:
         table = 'group'
     id = fields.IntField(pk=True)
-    telegram_id = fields.IntField()
+    telegram_id = fields.IntField(unique=True)
     global_pinned_message_id = fields.IntField(null=True)
     global_pinned_message_text = fields.CharField(max_length=4096, null=True)
     is_pinned_global_message = fields.BooleanField(default=False)

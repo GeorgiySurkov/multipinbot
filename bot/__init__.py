@@ -1,12 +1,14 @@
 from aiogram import Bot, Dispatcher, executor, types
-import logging
+from logging.config import dictConfig
 import asyncio
 
 from . import db
 from .config import Config
+from .logging_config import LOGGING
+
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+dictConfig(LOGGING)
 
 bot = Bot(token=Config.TELEGRAM_TOKEN)
 dp = Dispatcher(bot)

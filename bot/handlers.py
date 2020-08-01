@@ -1,11 +1,15 @@
 from aiogram import types
 from aiogram.utils.exceptions import BadRequest
 from tortoise.exceptions import DoesNotExist
+from logging import getLogger
 
 from . import dp, bot
 from .filters import BotAddedToGroup
 from .models import Group, PinnedMessage
 from .services import is_msg_supported, update_or_create_global_pinned_message, unpin_pattern, message_thumbnail
+
+
+logger = getLogger(__name__)
 
 
 @dp.message_handler(commands=['help', 'start'])
@@ -14,9 +18,9 @@ async def start(msg: types.Message) -> None:
     This handler will be called when user sends `/start` or `/help` command.
     """
     if msg.chat.type == 'private':
-        await msg.reply("Hi!\nI'm MultiPin Bot!\nAdd me to any group to pin multiple messages at the same time.")
+        await msg.answer("Hi!\nI'm MultiPin Bot!\nAdd me to any group to pin multiple messages at the same time.")
     else:
-        await msg.reply("To pin messages reply to it with /pin command.")
+        await msg.answer("To pin messages reply to it with /pin command.")
 
 
 @dp.message_handler(regexp=unpin_pattern)
@@ -43,6 +47,9 @@ async def unpin_command(msg: types.Message) -> None:
     except BadRequest as e:
         if str(e) == 'Reply message not found':
             await bot.send_message(msg.chat.id, f"Successfully unpinned message! {message_thumbnail(pinned_msg.text)}")
+        else:
+            raise
+    logger.info(f'Unpinned message tg_id:{pinned_msg.telegram_id} in group {msg.chat.title} tg_id:{msg.chat.id}')
 
 
 @dp.message_handler(commands=['pin'])
@@ -55,7 +62,11 @@ async def pin_command(msg: types.Message) -> None:
         return
     if not await is_msg_supported(msg):
         await msg.answer("Sorry, this type of message is not supported. For now I support only text messages.")
-    current_group = await Group.get(telegram_id=msg.chat.id)
+    current_group, is_created = await Group.get_or_create(telegram_id=msg.chat.id)
+    if is_created:
+        logger.warning(
+            f'Group {msg.chat.title} tg_id:{msg.chat.id} has not been added to database when bot was added to group.'
+        )
     already_pinned_message = await PinnedMessage.get_or_none(
         telegram_id=msg.reply_to_message.message_id,
         group=current_group
@@ -73,6 +84,7 @@ async def pin_command(msg: types.Message) -> None:
     await new_pinned_msg.save()
     await update_or_create_global_pinned_message(bot, current_group, new_pinned_msg)
     await msg.reply_to_message.reply("Successfully pinned message!")
+    logger.info(f'Pinned message tg_id:{new_pinned_msg.telegram_id} in group {msg.chat.title} tg_id:{msg.chat.id}')
 
 
 @dp.message_handler(lambda msg: msg.from_user.id != bot.id, content_types=[types.ContentType.PINNED_MESSAGE])
@@ -81,7 +93,11 @@ async def pin(msg: types.Message) -> None:
     This handler will be called when user pins a message without command.
     """
     await msg.answer('This group is using @multipinbot. To pin a message reply to it with /pin command.')
-    current_group = await Group.get(telegram_id=msg.chat.id)
+    current_group, is_created = await Group.get_or_create(telegram_id=msg.chat.id)
+    if is_created:
+        logger.warning(
+            f'Group {msg.chat.title} tg_id:{msg.chat.id} has not been added to database when bot was added to group.'
+        )
     if current_group.global_pinned_message_id is not None:
         await msg.chat.pin_message(current_group.global_pinned_message_id)
         return
@@ -99,3 +115,4 @@ async def added_to_group(msg: types.Message) -> None:
     current_group, is_created = await Group.get_or_create(telegram_id=msg.chat.id)
     if is_created:
         await current_group.save()
+    logger.info(f'Bot added to group {msg.chat.title}, tg_id:{msg.chat.id}')

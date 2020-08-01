@@ -18,6 +18,7 @@ class Group(Model):
     class Meta:
         table = 'group'
     id = fields.IntField(pk=True)
+    title = fields.CharField(max_length=128)
     telegram_id = fields.IntField(unique=True)
     global_pinned_message_id = fields.IntField(null=True)
     global_pinned_message_text = fields.CharField(max_length=4096, null=True)

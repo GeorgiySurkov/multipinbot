@@ -19,7 +19,7 @@ async def make_global_pinned_message(bot: Bot, pinned_messages: List[PinnedMessa
             f'/unpin{msg.id} to unpin this message'
         )
     if len(formatted_messages) == 0:
-        return "Here will be your pinned messages!"
+        return "No pinned messages!"
     msg = '\n\n'.join(formatted_messages)
     if len(msg) > 4096:
         raise TooLongMessageText('Too much pinned messages.\nUnpin some messages to free space.')
@@ -45,11 +45,11 @@ async def get_new_global_pinned_message_text(bot: Bot,
     if new_pinned_msg is not None:
         try:
             global_pinned_message_text = await make_global_pinned_message_for_group(bot, current_group)
-        except TooLongMessageText:
+        except TooLongMessageText as e:
             await new_pinned_msg.delete()
             await bot.send_message(
                 current_group.telegram_id,
-                "Not enough space to pin new messages.\n Unpin some messages to add new."
+                str(e)
             )
             if current_group.global_pinned_message_text is not None:
                 global_pinned_message_text = current_group.global_pinned_message_text

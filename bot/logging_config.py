@@ -19,14 +19,19 @@ LOGGING = {
             'level': 'INFO',
             'formatter': 'basic',
             'filename': 'app.log',
-            'maxBytes': 2048,
-            'backupCount': 3
+            'maxBytes': 100 * 2 ** 20,
+            'backupCount': 10
         }
     },
     'loggers': {
+        '': {
+            'level': 'INFO',
+            'propagate': True,
+            'handlers': ['console', 'file'],
+        },
         'bot': {
             'level': 'INFO',
-            'handlers': ['console', 'file'],
+            'propagate': True
         },
         'bot.handlers': {
             'level': 'INFO',

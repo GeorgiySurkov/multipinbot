@@ -120,7 +120,6 @@ async def added_to_group(msg: types.Message) -> None:
     await msg.answer("Hi, I'm @multipinbot. I can pin multiple messages in group.\n\n"
                      "To use my functionality you need to grant me rights to pin messages in group."
                      " To pin a message reply to it with /pin command.")
-    a = 2 / 0
     current_group, is_created = await Group.get_or_create({'title': msg.chat.title}, telegram_id=msg.chat.id)
     if is_created:
         await current_group.save()
